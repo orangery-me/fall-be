@@ -1,0 +1,100 @@
+swagger: "2.0"
+info:
+  title: Activity and Fall Detection API
+  description: API for detecting activities and falls using accelerometer data.
+  version: "1.0"
+basePath: /
+schemes:
+  - http
+paths:
+  /predict:
+    post:
+      tags:
+        - Predict
+      summary: Predict activity or fall
+      description: Predicts whether the input data indicates a fall or an activity.
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Input data for prediction
+          required: true
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    acceleration:
+                      type: object
+                      properties:
+                        x:
+                          type: number
+                        y:
+                          type: number
+                        z:
+                          type: number
+                    rotation:
+                      type: object
+                      properties:
+                        x:
+                          type: number
+                        y:
+                          type: number
+                        z:
+                          type: number
+                    timestamp:
+                      type: string
+                      format: date-time
+      responses:
+        '200':
+          description: Prediction result
+        '400':
+          description: Invalid input data
+
+  /location:
+    post:
+      tags:
+        - Alert
+      summary: Cảnh báo vị trí
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            properties:
+              latitude:
+                type: number
+              longitude:
+                type: number
+      responses:
+        200:
+        400:
+         
+  /device-token:
+    post:
+      tags:
+        - Device Token
+      summary: Save device token
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            properties:
+              user_id:
+                type: string
+              token:
+                type: string
+      responses:
+        200:
+          description: Device token saved successfully
+        400:
+          description: Invalid input data
