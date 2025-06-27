@@ -8,5 +8,3 @@ __pycache__/
 *.pyd
 
 .gitignore
-
-model/
