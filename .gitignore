@@ -3,3 +3,4 @@ __pycache__/
 .env
 
 healthy_apps.json
+clean-env/
