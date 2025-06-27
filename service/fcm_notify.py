@@ -1,6 +1,4 @@
-from firebase_admin import credentials, db, messaging
-from datetime import datetime, date
-import time
+from firebase_admin import messaging
 
 # device registration token
 # registration_token = "d8NlS0JqRQSiN5vWUZVx2I:APA91bH4-5ioxwC5wCJP2Sf116wa3YRe5vmbbeY5TNpJLh81_7TVFgaQIiM6pAlbz_XGo8TaFnihm3dRe6nghVzE6kTpmZTUo70deAmCmyLuKbcjLh8b8TE"

@@ -1,15 +1,38 @@
-from tensorflow.keras.models import load_model
+import firebase_admin
+from firebase_admin import credentials, initialize_app
+import config as config
+import json
+import tempfile
+
+# Initialize Firebase Admin SDK
+if not firebase_admin._apps:
+    json_str = config.Config.GOOGLE_APPLICATION_CREDENTIALS_JSON
+    if json_str:
+        try:
+            credentials_dict = json.loads(json_str)
+            print("Initializing Firebase Admin SDK with provided credentials...")
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".json") as tmp:
+                json.dump(credentials_dict, tmp)
+                tmp_path = tmp.name
+                
+            cred = credentials.Certificate(tmp_path)
+            initialize_app(cred)
+            
+        except Exception as e:
+            print(f"Error initializing Firebase Admin SDK: {e}")
+    else:
+        print("GOOGLE_APPLICATION_CREDENTIALS_JSON is not set in the environment variables.")
+        
+
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from flask_cors import CORS
 from datetime import datetime
-import service.fcm_notify as notify
 import service.process as process
-import firebase_admin
 from flasgger import Swagger
-from firebase_admin import credentials, initialize_app
-import config as config
 import numpy as np
+import service.fcm_notify as notify
+from tensorflow.keras.models import load_model
 
 # Initialize Flask app and CORS
 app = Flask(__name__)
@@ -22,10 +45,6 @@ db = client["healthy_app"]
 records_collection = db["activity_records"]
 user = db["user"]
 
-# Initialize Firebase Admin SDK
-if not firebase_admin._apps:
-    cred = credentials.Certificate("healthy_apps.json")
-    firebase_admin.initialize_app(cred)
 
 # Load model
 model = load_model("model/LSTM_model.h5")
