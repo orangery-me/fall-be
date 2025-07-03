@@ -4,32 +4,32 @@ services:
     build: .
     volumes:
       - .:/app
-    depends_on:
-      - mongodb
+    # depends_on:
+    # - mongodb
     ports:
       - "5050:5050"
-    environment:
-      MONGO_URI: ${MONGO_URI}
+#     environment:
+#       MONGO_URI: ${MONGO_URI}
 
-  mongodb:
-    image: mongodb/mongodb-community-server
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: pbl5
-      MONGO_INITDB_ROOT_PASSWORD: fall2025
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
+#   mongodb:
+#     image: mongodb/mongodb-community-server
+#     environment:
+#       MONGO_INITDB_ROOT_USERNAME: pbl5
+#       MONGO_INITDB_ROOT_PASSWORD: fall2025
+#     ports:
+#       - "27017:27017"
+#     volumes:
+#       - mongo_data:/data/db
 
-  # mongo-express is a web-based tool for managing MongoDB databases
-  mongo_express:
-    image: mongo-express
-    environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: pbl5
-      ME_CONFIG_MONGODB_ADMINPASSWORD: fall2025
-      ME_CONFIG_MONGODB_SERVER: mongodb
-    ports:
-      - "8081:8081"
+#   # mongo-express is a web-based tool for managing MongoDB databases
+#   mongo_express:
+#     image: mongo-express
+#     environment:
+#       ME_CONFIG_MONGODB_ADMINUSERNAME: pbl5
+#       ME_CONFIG_MONGODB_ADMINPASSWORD: fall2025
+#       ME_CONFIG_MONGODB_SERVER: mongodb
+#     ports:
+#       - "8081:8081"
 
-volumes:
-  mongo_data:
+# volumes:
+#   mongo_data:

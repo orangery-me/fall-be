@@ -1,5 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, initialize_app
+from firebase_admin import credentials, initialize_app, db
 import config as config
 import json
 import tempfile
@@ -16,7 +16,7 @@ if not firebase_admin._apps:
                 tmp_path = tmp.name
                 
             cred = credentials.Certificate(tmp_path)
-            initialize_app(cred)
+            initialize_app(cred, {'databaseURL': config.Config.FIREBASE_DATABASE_URL})
             
         except Exception as e:
             print(f"Error initializing Firebase Admin SDK: {e}")
@@ -25,7 +25,6 @@ if not firebase_admin._apps:
         
 
 from flask import Flask, request, jsonify
-from pymongo import MongoClient
 from flask_cors import CORS
 from datetime import datetime
 import service.process as process
@@ -33,18 +32,12 @@ from flasgger import Swagger
 import numpy as np
 import service.fcm_notify as notify
 from tensorflow.keras.models import load_model
+import threading
 
 # Initialize Flask app and CORS
 app = Flask(__name__)
 CORS(app)
 swagger = Swagger(app, template_file='swagger_template.yml')
-
-# Initialize MongoDB client and database
-client = MongoClient(config.Config.MONGO_URI)
-db = client["healthy_app"]
-records_collection = db["activity_records"]
-user = db["user"]
-
 
 # Load model
 model = load_model("model/LSTM_model.h5")
@@ -62,115 +55,114 @@ def predict_activity():
 
     try:
         X, start_time, end_time = process.process_data(raw_data)
-
-        results = []
+        
         for i in range(X.shape[0]):
             sequence = X[i].reshape(1, X.shape[1], X.shape[2])
             # predict activity using the loaded model
             prediction = model.predict(sequence)
             activity = int(np.argmax(prediction[0]) + 1)
 
-            result_data = {
-                "activityType": activity,
-                "start_time": start_time.isoformat() if isinstance(start_time, datetime) else str(start_time),
-                "end_time": end_time.isoformat() if isinstance(end_time, datetime) else str(end_time)
-            }
-            results.append(result_data)
-
-        # Writing results to MongoDB
-        now = datetime.now()
-        today = now.strftime('%d/%m/%Y')
-        custom_id = now.strftime("%Y%m%d")
-
-        existing_record = records_collection.find_one({
-            "user_id": user_id,
-            "date": today
-        })
-
-        if existing_record:
-            records_collection.update_one(
-                {"_id": existing_record["_id"]},
-                {"$push": {"records": {"$each": results}}}
-            )
-        else:
-            new_record = {
-                "_id": custom_id,
-                "user_id": user_id,
-                "date": today,
-                "records": results
-            }
-            records_collection.insert_one(new_record)
-
-        # update status
-        user.update_one(
-            {"_id": user_id},
-            {"$set": {"is_fall": any(r["activityType"] == 8 for r in results)}},
-            upsert=True
-        )
-
-        return jsonify({"message": "Predicted", "results": results})
-
+            result = send_result_to_firebase(activity, start_time, end_time)
+        
+            return jsonify({"message": "Predicted", "result": result})
+        
     except Exception as e:
         print(e)
         return jsonify({"error": str(e)}), 500
-
-@app.route('/device-token', methods=['POST'])
-def register_device_token():
-    data = request.json
-    token = data.get("token")
     
-    if not token:
-        return jsonify({"error": "Missing device token"}), 400
-
-    user.update_one(
-        {"_id": user_id},
-        {"$set": {"token": token}},
-        upsert=True
-    )
-    return jsonify({"message": "Device token registered successfully"})
+def run_location_listener():
+    location_ref = db.reference("location")
+    location_ref.listen(on_location_change)
+    
+    
+def convert_np_datetime64_to_str(np_datetime):
+    py_datetime = np_datetime.astype('M8[ms]').astype(datetime)
+    return py_datetime.isoformat()
 
     
-@app.route('/location', methods=['POST'])
-def location_alert():
-    data = request.json
-    lat = data.get("latitude")
-    lon = data.get("longitude")
-    custom_id = datetime.now().strftime("%Y%m%d%H%M%S%f")[:-3] 
-
-    if not lat or not lon:
-        return jsonify({"error": "Missing latitude or longitude"}), 400
-
-    now = datetime.now().strftime('%H:%M:%S')
+def send_result_to_firebase(activity, start_time, end_time):
+    result_ref = db.reference("activity_records")
+    status_ref = db.reference("status")
     
-    # save location to MongoDB
-    location_data = {
-        "_id": custom_id,
-        "latitude": lat,
-        "longitude": lon,
+    all_records = result_ref.get()
+    today = datetime.now().strftime('%d/%m/%Y') 
+    print(f"today nek: {today}")
+    
+    if isinstance(start_time, np.datetime64):
+        start_time = convert_np_datetime64_to_str(start_time)
+    if isinstance(end_time, np.datetime64):
+        end_time = convert_np_datetime64_to_str(end_time)
+        
+    result_data = {
+        "activityType": activity,
+        "start_time": start_time,
+        "end_time": end_time
+    }
+        
+    existing_key = None
+    
+    # Set status in Firebase
+    status = {
+        "is_fall": activity == 8,
         "user_id": user_id,
     }
-    db.locations.insert_one(location_data)
+    status_ref.set(status)
     
-    # get device token
-    user_data = user.find_one({"_id": user_id})
-    if not user_data or "token" not in user_data:
-        return jsonify({"error": "User device token not found"}), 404
-    device_token = user_data["token"]
+    if all_records:
+        for new_key, value in all_records.items():
+            print("Checking key:", new_key)
+            if value.get('user_id') == user_id and value.get('date') == today:
+                existing_key = new_key
+                break
+            
+    if existing_key:
+        records_ref = result_ref.child(f"{existing_key}/records")
+        current_records = records_ref.get() 
+        current_records.append(result_data)
+        records_ref.set(current_records)
+    else:
+        new_object = {
+            "user_id": user_id,
+            "date": today,
+            "records": [result_data]
+        }
+        new_key = datetime.now().strftime("%Y%m%d")
+        records_ref = result_ref.child(new_key)
+        records_ref.set(new_object)
+        existing_key = records_ref.key
+        
+    return result_data
+        
+def on_location_change(event):
+    # get the first key of data
+    data = event.data
+    key = next(iter(data)) 
     
-    # send notification
+    if key != "latitude":
+        return
+    
+    print(f"[INFO] New location change detected: data = {data} with key = {key}")
+
+    dt = datetime.now()
+    lat = data['latitude']
+    lon = data['longitude']
+    
+    # get device token from Firebase
+    result_ref = db.reference(f"user/{user_id}/deviceToken")
+    device_token = result_ref.get()
+
+    # Send notification 
     notify.send_notification(
         device_token,
         "Cảnh báo té ngã",
-        f"Phát hiện một cú ngã vào {now}. Nhấn để xem vị trí.",
+        f"Phát hiện một cú ngã vào {dt}. Nhấn để xem vị trí.",
         data={
-            "_id": custom_id,
             "lat": str(lat),
             "long": str(lon),
-            "user_id": user_id,
         }
-    )
-
-    return jsonify({"message": "Location alert sent"})
+    )    
 
 if __name__ == '__main__':
+    threading.Thread(target=run_location_listener, daemon=True).start()
+    threading.Thread(target=notify.handle_activity_record, args=(user_id,), daemon=True).start()
     app.run(host='0.0.0.0', port=5050, debug=True)
