@@ -75,9 +75,6 @@ def handle_activity_record(user_id):
             elif current_activity == 7:
                 title = "🚴 Bạn đã đạp xe"
                 body = f"Đạp xe từ {group_start.strftime('%H:%M')} đến {group_end.strftime('%H:%M')} vào {date_str}."
-            elif current_activity == 8:
-                title = "⚠️ Phát hiện té ngã!"
-                body = f"Té ngã lúc {group_start.strftime('%H:%M')} vào {date_str}. Hãy kiểm tra tình trạng ngay!"
 
             if title and body:
                 send_notification(device_token, title, body)
