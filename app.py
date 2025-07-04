@@ -70,9 +70,38 @@ def predict_activity():
         print(e)
         return jsonify({"error": str(e)}), 500
     
-def run_location_listener():
+@app.route('/location', methods=['POST'])
+def update_location():
+    data = request.json
+    lat = data.get("latitude")
+    lon = data.get("longitude")
+    now = datetime.now().strftime("%Y/%m/%d %H:%M")
+    
+    user_ref = db.reference(f"user/{user_id}/deviceToken")
     location_ref = db.reference("location")
-    location_ref.listen(on_location_change)
+    device_token = user_ref.get()
+
+    if not lat or not lon:
+        return jsonify({"error": "Missing latitude or longitude"}), 400
+
+    # save location to Firebase
+    location_ref.set({
+        "latitude": lat,
+        "longitude": lon,
+    })
+
+    # Send notification 
+    notify.send_notification(
+        device_token,
+        "Cảnh báo té ngã",
+        f"Phát hiện một cú ngã vào {now}. Nhấn để xem vị trí.",
+        data={
+            "lat": str(lat),
+            "long": str(lon),
+        }
+    )   
+    
+    return jsonify({"message": "Location updated successfully"}), 200
     
     
 def convert_np_datetime64_to_str(np_datetime):
@@ -132,37 +161,8 @@ def send_result_to_firebase(activity, start_time, end_time):
         existing_key = records_ref.key
         
     return result_data
-        
-def on_location_change(event):
-    # get the first key of data
-    data = event.data
-    key = next(iter(data)) 
-    
-    if key != "latitude":
-        return
-    
-    print(f"[INFO] New location change detected: data = {data} with key = {key}")
-
-    dt = datetime.now()
-    lat = data['latitude']
-    lon = data['longitude']
-    
-    # get device token from Firebase
-    result_ref = db.reference(f"user/{user_id}/deviceToken")
-    device_token = result_ref.get()
-
-    # Send notification 
-    notify.send_notification(
-        device_token,
-        "Cảnh báo té ngã",
-        f"Phát hiện một cú ngã vào {dt}. Nhấn để xem vị trí.",
-        data={
-            "lat": str(lat),
-            "long": str(lon),
-        }
-    )    
+          
 
 if __name__ == '__main__':
-    threading.Thread(target=run_location_listener, daemon=True).start()
     threading.Thread(target=notify.handle_activity_record, args=(user_id,), daemon=True).start()
     app.run(host='0.0.0.0', port=5050, debug=True)
